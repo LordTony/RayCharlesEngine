@@ -1,0 +1,17 @@
+{
+  "name": "ray_charles_engine",
+  "version": "1.0.0",
+  "description": "A Raycaster",
+  "devDependencies": {
+    "concurrently": "^8.2.1",
+    "esbuild": "^0.19.4",
+    "live-server": "^1.2.2"
+  },
+  "scripts": {
+    "serve": "live-server --open=main.html",
+    "build": "esbuild code.ts --bundle --outfile=dist/code.js --watch",
+    "start": "concurrently \"npm run build\" \"npm run serve\""
+  },
+  "author": "LordTony",
+  "license": "ISC"
+}

@@ -4,21 +4,35 @@ import { Point } from './point'
     const html: any = document.getElementsByTagName(item)[0];
     html.style.margin = "0px";
     html.style.padding = "0px";
-    html.style.display = "flex";
 });
 
-const padding = 3;
+let show2DOverlay = false;
+let wallTextureIndex = 1;
+let printDebugInfoThisFrame = false;
+
+const numberOfRays = 640;
+const noShadowDist = 3;
+const fullShadowDist = 10;
+
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-canvas.style.top = `${padding}px`;
-canvas.style.left = `${padding}px`;
-canvas.style.position = "absolute";
+canvas.style.margin = "auto"
+//canvas.style.padding = "0"
+canvas.style.display = "block"
 canvas.style.backgroundColor = "rgb(50,50,50)"
 canvas.style.imageRendering = "pixelated"
+canvas.style.transformOrigin = "top center"
+canvas.style.transform = "scale(2)"
+canvas.width = 640;
+canvas.height = 300;
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
-ctx.imageSmoothingEnabled = false;
- // to draw a thickness 1 pixel nicely, you need to draw them at (int)x + .5, (int)y + .5
-ctx.translate(.5, .5);
+
+const bufferCanvas = document.createElement("canvas");
+bufferCanvas.height = canvas.height;
+bufferCanvas.width = canvas.width;
+const bufferCtx = bufferCanvas.getContext("2d") as CanvasRenderingContext2D;
+bufferCtx.imageSmoothingEnabled = false;
+bufferCtx.translate(.5, .5);
 
 const room = `
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -59,15 +73,6 @@ const camera = {
     fieldOfView: Math.PI / 3
 }
 
-let show2DOverlay = false;
-let wallTextureIndex = 1;
-let printDebugInfoThisFrame = false;
-canvas.width = 1200;
-canvas.height = 800;
-const numberOfRays = 300;
-const noShadowDist = 3;
-const fullShadowDist = 10;
-
 const cellHeight = canvas.height / roomHeight;
 const cellWidth = canvas.width / roomWidth;
 const incrament = camera.fieldOfView / numberOfRays;
@@ -78,25 +83,25 @@ window.onkeyup = (e) => { keys[e.key] = false; }
 window.onkeydown = (e) => { keys[e.key] = true; }
 
 const drawCircle = (point: Point, radius: number): void => {
-    ctx.beginPath();
-    ctx.arc(
+    bufferCtx.beginPath();
+    bufferCtx.arc(
         Math.round(point.x), 
         Math.round(point.y), 
         radius, 
         0, 
         TwoPi);
-    ctx.stroke();
+    bufferCtx.stroke();
 }
 
 const drawLine = (startPoint: Point, endPoint: Point): void => {
-    ctx.beginPath();
-    ctx.moveTo(
+    bufferCtx.beginPath();
+    bufferCtx.moveTo(
         Math.round(startPoint.x), 
         Math.round(startPoint.y));
-    ctx.lineTo(
+    bufferCtx.lineTo(
         Math.round(endPoint.x),
         Math.round(endPoint.y));
-    ctx.stroke();
+    bufferCtx.stroke();
 }
 
 const getShadowColor = (alpha: number): string => {
@@ -198,27 +203,18 @@ const handleInput = (elapsed: number) => {
 }
 
 const draw = () => {
-    ctx.clearRect(0,0,canvas.width,canvas.height)
+    bufferCtx.clearRect(0,0,canvas.width,canvas.height)
 
     // ground
-    ctx.fillStyle = "brown"
-    ctx.fillRect(0, cellHeight * roomHeight/2, cellWidth * roomWidth, cellHeight * roomHeight/2)
-
-    /*
-    ctx.save();
-    ctx.translate(canvas.width/2, canvas.height)
-    ctx.rotate(camera.radialAngle)
-    ctx.scale(5,2.5)
-    ctx.drawImage(firewallImage, -firewallImage.width/2, -firewallImage.height/2)
-    ctx.restore();
-    */
+    bufferCtx.fillStyle = "brown"
+    bufferCtx.fillRect(0, cellHeight * roomHeight/2, cellWidth * roomWidth, cellHeight * roomHeight/2)
 
     // ground distance shadow
     const shadowBandHeight = canvas.height / (2 * noShadowDist);
     const numberOfSteps = shadowBandHeight / baseScanlineWidth;
     for(let i = 0; i < numberOfSteps; i++) {
-        ctx.fillStyle = getShadowColor(1 - (i/numberOfSteps))
-        ctx.fillRect(0, (i * baseScanlineWidth) + (canvas.height/2) , canvas.width, baseScanlineWidth)
+        bufferCtx.fillStyle = getShadowColor(1 - (i/numberOfSteps))
+        bufferCtx.fillRect(0, (i * baseScanlineWidth) + (canvas.height/2) , canvas.width, baseScanlineWidth)
     }
 
     // cast rays and draw
@@ -293,8 +289,8 @@ const draw = () => {
 
         const lineHeight = canvas.height / ray.planarDistance
         if(wallTextureIndex % wallTextures.length === 0) {
-            ctx.fillStyle = tileInfo[ray.tile][ray.wallFace];
-            ctx.fillRect(
+            bufferCtx.fillStyle = tileInfo[ray.tile][ray.wallFace];
+            bufferCtx.fillRect(
                 Math.round(ray.index * baseScanlineWidth), 
                 Math.round(canvas.height/2 - lineHeight/2), 
                 Math.round(baseScanlineWidth),
@@ -313,7 +309,7 @@ const draw = () => {
             const textureEndPoint = startTextureOffset * texture.width + baseScanlineWidth;
             const backup = Math.max(textureEndPoint - texture.width, 0);
 
-            ctx.drawImage(
+            bufferCtx.drawImage(
                 texture,
                 startTextureOffset * texture.width - backup,
                 0,
@@ -329,8 +325,8 @@ const draw = () => {
         
         if(ray.planarDistance > noShadowDist) {
             const shadowWeight = (ray.planarDistance - noShadowDist)/(fullShadowDist - noShadowDist)
-            ctx.fillStyle = getShadowColor(shadowWeight)
-            ctx.fillRect(
+            bufferCtx.fillStyle = getShadowColor(shadowWeight)
+            bufferCtx.fillRect(
                 Math.round(ray.index * baseScanlineWidth), 
                 Math.round(canvas.height/2 - lineHeight/2), 
                 Math.round(baseScanlineWidth), 
@@ -340,12 +336,12 @@ const draw = () => {
         
     }
 
-    ctx.fillStyle = "white";
-    //ctx.strokeText(`duplicate Cols: ${colDupes} out of ${rays.length}`, 10, 10)
+    bufferCtx.fillStyle = "white";
+    //bufferCtx.strokeText(`duplicate Cols: ${colDupes} out of ${rays.length}`, 10, 10)
 
     if(show2DOverlay) {
         const scaleFactor = 1;
-        ctx.strokeStyle = "white"
+        bufferCtx.strokeStyle = "white"
 
         const scaledDown = new Point(camera.pos.x * cellWidth * scaleFactor, camera.pos.y * cellHeight * scaleFactor)
 
@@ -356,7 +352,7 @@ const draw = () => {
         for(let y = 0; y < room.length; y++) {
             for(let x = 0; x < room[y].length; x++) {
                 if(room[y][x] != ".") {
-                    ctx.strokeRect(
+                    bufferCtx.strokeRect(
                         Math.round(x * cellWidth * scaleFactor), 
                         Math.round(y * cellHeight * scaleFactor), 
                         Math.round(cellWidth * scaleFactor), 
@@ -371,11 +367,15 @@ const draw = () => {
             drawLine(scaledDown, new Point(
                 ray.stepEndPoint.x * cellWidth * scaleFactor, 
                 ray.stepEndPoint.y * cellHeight * scaleFactor));
-            ctx.strokeStyle = "white"
+                bufferCtx.strokeStyle = "white"
         })
 
-        ctx.strokeText(`camera.radialAngle: ${camera.radialAngle} ${getGeneralDirection(camera.radialAngle)}`,10,10)
+        bufferCtx.strokeText(`camera.radialAngle: ${camera.radialAngle} ${getGeneralDirection(camera.radialAngle)}`,10,10)
     }
+
+    // transfer the buffer over to the visible context in one fell swoop
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    ctx.drawImage(bufferCanvas, 0, 0);
 }
 
 let prev = 0;

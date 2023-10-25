@@ -3,14 +3,10 @@
   "version": "1.0.0",
   "description": "A Raycaster",
   "devDependencies": {
-    "concurrently": "^8.2.1",
-    "esbuild": "^0.19.4",
-    "live-server": "^1.2.2"
+    "esbuild": "^0.19.4"
   },
   "scripts": {
-    "serve": "live-server --open=main.html",
-    "build": "esbuild code.ts --bundle --outfile=dist/code.js --watch",
-    "start": "concurrently \"npm run build\" \"npm run serve\""
+    "start": "start firefox http://localhost:8000 && esbuild code.ts --bundle --outdir=dist --watch --serve --servedir=. --banner:js=\"new EventSource(\\\"/esbuild\\\").addEventListener(\\\"change\\\", () => location.reload());\""
   },
   "author": "LordTony",
   "license": "ISC"

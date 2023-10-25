@@ -10,13 +10,12 @@ let show2DOverlay = false;
 let wallTextureIndex = 1;
 let printDebugInfoThisFrame = false;
 
-const numberOfRays = 640;
+const numberOfRays = 320;
 const noShadowDist = 3;
 const fullShadowDist = 10;
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 canvas.style.margin = "auto"
-//canvas.style.padding = "0"
 canvas.style.display = "block"
 canvas.style.backgroundColor = "rgb(50,50,50)"
 canvas.style.imageRendering = "pixelated"
@@ -27,6 +26,7 @@ canvas.height = 300;
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
+// This is for the double buffer
 const bufferCanvas = document.createElement("canvas");
 bufferCanvas.height = canvas.height;
 bufferCanvas.width = canvas.width;
@@ -287,41 +287,39 @@ const draw = () => {
     {
         const ray = rays[i] as any;
 
-        const lineHeight = canvas.height / ray.planarDistance
-        if(wallTextureIndex % wallTextures.length === 0) {
-            bufferCtx.fillStyle = tileInfo[ray.tile][ray.wallFace];
-            bufferCtx.fillRect(
-                Math.round(ray.index * baseScanlineWidth), 
-                Math.round(canvas.height/2 - lineHeight/2), 
-                Math.round(baseScanlineWidth),
-                lineHeight);
-        } else {
-            let startTextureOffset = ray.wallFace < 2
-                ? ray.stepEndPoint.x % 1
-                : 1 - (ray.stepEndPoint.y % 1)
-
-            const texture = wallTextures[wallTextureIndex % wallTextures.length] as HTMLImageElement;
-            if (printDebugInfoThisFrame) {
-                /* anything you want to print for this frame goes here */
+        const lineHeight = Math.round(canvas.height / ray.planarDistance)
+        if(ray.planarDistance < fullShadowDist) {
+            if(wallTextureIndex % wallTextures.length === 0) {
+                bufferCtx.fillStyle = tileInfo[ray.tile][ray.wallFace];
+                bufferCtx.fillRect(
+                    Math.round(ray.index * baseScanlineWidth), 
+                    Math.round(canvas.height/2 - lineHeight/2), 
+                    Math.round(baseScanlineWidth),
+                    lineHeight);
+            } else {
+                let startTextureOffset = ray.wallFace < 2
+                    ? ray.stepEndPoint.x % 1
+                    : 1 - (ray.stepEndPoint.y % 1)
+    
+                const texture = wallTextures[wallTextureIndex % wallTextures.length] as HTMLImageElement;
+    
+                // fill up gaps between textures wherever the texture sampling would run past the bounds of the image
+                const textureEndPoint = startTextureOffset * texture.width + baseScanlineWidth;
+                const backup = Math.max(textureEndPoint - texture.width, 0);
+    
+                bufferCtx.drawImage(
+                    texture,
+                    startTextureOffset * texture.width - backup,
+                    0,
+                    1,
+                    Math.round(texture.height),
+                    Math.round(ray.index * baseScanlineWidth), 
+                    Math.round(canvas.height/2 - lineHeight/2), 
+                    Math.round(baseScanlineWidth), 
+                    lineHeight
+                )
             }
-
-            // fill up gaps between textures wherever the texture sampling would run past the bounds of the image
-            const textureEndPoint = startTextureOffset * texture.width + baseScanlineWidth;
-            const backup = Math.max(textureEndPoint - texture.width, 0);
-
-            bufferCtx.drawImage(
-                texture,
-                startTextureOffset * texture.width - backup,
-                0,
-                1,
-                texture.height,
-                Math.round(ray.index * baseScanlineWidth), 
-                Math.round(canvas.height/2 - lineHeight/2), 
-                Math.round(baseScanlineWidth), 
-                Math.round(lineHeight)
-            )
         }
-
         
         if(ray.planarDistance > noShadowDist) {
             const shadowWeight = (ray.planarDistance - noShadowDist)/(fullShadowDist - noShadowDist)

@@ -6,7 +6,7 @@
     "esbuild": "^0.19.4"
   },
   "scripts": {
-    "start": "start firefox http://localhost:8000 && esbuild code.ts --bundle --outdir=dist --watch --serve --servedir=. --banner:js=\"new EventSource(\\\"/esbuild\\\").addEventListener(\\\"change\\\", () => location.reload());\""
+    "start": "start firefox http://localhost:8000 && esbuild code.ts --bundle --outdir=dist --watch --serve --servedir=."
   },
   "author": "LordTony",
   "license": "ISC"

@@ -1,7 +1,11 @@
 import { Point } from './point'
 import { IRaycastObject } from './IRaycastObject'
 
+// Allows live-reload with esbuild
+new EventSource("/esbuild").addEventListener("change", () => location.reload());
+
 const skyColor = "rgb(50,50,50)";
+const floorColor = "brown";
 
 let show2DOverlay = false;
 let wallTextureIndex = 1;
@@ -218,8 +222,8 @@ const draw = () => {
     bufferCtx.clearRect(0,0,canvas.width,canvas.height)
 
     // ground
-    bufferCtx.fillStyle = "brown"
-    bufferCtx.fillRect(0, cellHeight * roomHeight/2, cellWidth * roomWidth, cellHeight * roomHeight/2)
+    bufferCtx.fillStyle = floorColor;
+    bufferCtx.fillRect(0, cellHeight * roomHeight/2, cellWidth * roomWidth, cellHeight * roomHeight/2);
 
     // ground distance shadow
     const shadowBandHeight = canvas.height / (2 * noShadowDist);

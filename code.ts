@@ -1,28 +1,41 @@
 import { Point } from './point'
+import { IRaycastObject } from './IRaycastObject'
 
-["html","body"].forEach(item => {
-    const html: any = document.getElementsByTagName(item)[0];
-    html.style.margin = "0px";
-    html.style.padding = "0px";
-});
+const skyColor = "rgb(50,50,50)";
 
 let show2DOverlay = false;
 let wallTextureIndex = 1;
 let printDebugInfoThisFrame = false;
 
-const numberOfRays = 320;
-const noShadowDist = 3;
+const noShadowDist = 2;
 const fullShadowDist = 10;
+const aspectRatio = 16 / 9;
+const horizontalResolution = 640;
+const verticalResolution = Math.round(horizontalResolution / aspectRatio);
+
+const body = document.getElementsByTagName("body")[0] as HTMLElement;
+body.style.margin = "0px";
+body.style.padding = "0px";
+body.style.backgroundColor = skyColor;
+body.style.overflow = "hidden";
+body.style.height = "100vh";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+canvas.width = horizontalResolution
+canvas.height = verticalResolution
+
 canvas.style.margin = "auto"
 canvas.style.display = "block"
-canvas.style.backgroundColor = "rgb(50,50,50)"
+canvas.style.backgroundColor = skyColor
 canvas.style.imageRendering = "pixelated"
 canvas.style.transformOrigin = "top center"
-canvas.style.transform = "scale(2)"
-canvas.width = 640;
-canvas.height = 300;
+
+window.onresize = () => {
+    const canvasScaleFactor = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+    canvas.style.transform = `scale(${canvasScaleFactor})`
+    canvas.style.marginTop = `calc(50vh - ${canvas.height * canvasScaleFactor / 2}px)`
+}
+window.dispatchEvent(new Event('resize'));
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
@@ -36,10 +49,10 @@ bufferCtx.translate(.5, .5);
 
 const room = `
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-X........X........X...........X
-X..X..X..X..XXXX..X..XXXX..XXXX
-X..X..X.....X........X..X.....X
-XXXX..XXXX..XXXX..XXXX..XXXX..X
+X.................X...........X
+X..X........XXXX..X..XXXX..XXXX
+X..X........X........X..X.....X
+XXXX........XXXX..XXXX..XXXX..X
 X.....X.....X........X.....X..X
 XXXXXXX..XXXX..XXXXXXX..XXXX..X
 X.....X..X..............X.....X
@@ -75,8 +88,7 @@ const camera = {
 
 const cellHeight = canvas.height / roomHeight;
 const cellWidth = canvas.width / roomWidth;
-const incrament = camera.fieldOfView / numberOfRays;
-const baseScanlineWidth = canvas.width / numberOfRays;
+const baseScanlineWidth = canvas.width / horizontalResolution;
 
 var keys = {};
 window.onkeyup = (e) => { keys[e.key] = false; }
@@ -164,11 +176,11 @@ const handleCollision = (desiredPostion: Point, radius: number, headingDirection
 }
 
 const handleInput = (elapsed: number) => {
+
+    //camera.fieldOfView = Math.PI / 3 + (Math.cos(Date.now()/1000) / 2)
     if(keys["a"] || keys["d"]) {
         const direction = keys["a"] ? -1 : 1;
-        camera.radialAngle += 0.075 * direction;
-        if(camera.radialAngle < 0) { camera.radialAngle += TwoPi; }
-        if(camera.radialAngle >= TwoPi) { camera.radialAngle -= TwoPi; }
+        camera.radialAngle = (camera.radialAngle  + 0.075 * direction) % TwoPi;
     }
 
     if(keys["w"] || keys["s"]) {
@@ -223,9 +235,9 @@ const draw = () => {
     const cellOffsetYDown = 1 - (camera.pos.y % 1);
     const cellOffsetYUp = (camera.pos.y % 1);
 
-    const rays = []
-    for(var i = 0; i < numberOfRays; i++) {
-        let rayAngle = camera.radialAngle - (camera.fieldOfView/2) + (incrament * i);
+    const rays: Array<IRaycastObject> = []
+    for(var i = 0; i < horizontalResolution; i++) {
+        let rayAngle = camera.radialAngle - (camera.fieldOfView/2) + (camera.fieldOfView / horizontalResolution * i);
         if(rayAngle < 0) { rayAngle += TwoPi }
         if(rayAngle >= TwoPi) { rayAngle -= TwoPi }
 
@@ -313,21 +325,29 @@ const draw = () => {
                     0,
                     1,
                     Math.round(texture.height),
-                    Math.round(ray.index * baseScanlineWidth), 
+                    ray.index, 
                     Math.round(canvas.height/2 - lineHeight/2), 
-                    Math.round(baseScanlineWidth), 
+                    1,
                     lineHeight
                 )
             }
         }
         
+        /* Attempts at floor texturing
+        const startFloor = Math.round(canvas.height/2 - lineHeight/2) + lineHeight;
+        bufferCtx.fillStyle = "green";
+        for(let floorPixel = startFloor; floorPixel < verticalResolution; floorPixel += 1) {
+            bufferCtx.fillRect(ray.index, floorPixel, 1, 1)
+        }
+        */
+
         if(ray.planarDistance > noShadowDist) {
             const shadowWeight = (ray.planarDistance - noShadowDist)/(fullShadowDist - noShadowDist)
             bufferCtx.fillStyle = getShadowColor(shadowWeight)
             bufferCtx.fillRect(
-                Math.round(ray.index * baseScanlineWidth), 
+                ray.index, 
                 Math.round(canvas.height/2 - lineHeight/2), 
-                Math.round(baseScanlineWidth), 
+                1, 
                 Math.round(lineHeight)
             )
         }
@@ -393,40 +413,23 @@ const gameLoop = (timeStamp: number) => {
 
 // Start the game when all images are loaded
 
-const brickImage = new Image();
-const hedgeImage = new Image();
-const firewallImage = new Image();
-
-hedgeImage.src = "hedge.png";
-brickImage.src = "brick.jpg";
-firewallImage.src = "firewall.png"
-
-const wallTextures : Array<HTMLImageElement | null> = [
-    null,
-    brickImage, 
-    hedgeImage,
-    firewallImage
-]
-
 let loadedTextures = 1;
-
-brickImage.onload = () => {
-    loadedTextures++;
-    if(loadedTextures == wallTextures.length) {
-        window.requestAnimationFrame(gameLoop);
+const wallTextures: Array<HTMLImageElement | null> = [
+    null,
+    "hedge.png",
+    "brick.jpg",
+    "firewall.png",
+    "fleshwall.jpg"
+].map(fileName => {
+    const img = new Image();
+    if(fileName) {
+        img.src = fileName;
     }
-}
-
-hedgeImage.onload = () => {
-    loadedTextures++;
-    if(loadedTextures == wallTextures.length) {
-        window.requestAnimationFrame(gameLoop);
+    img.onload = () => {
+        loadedTextures++;
+        if(loadedTextures == wallTextures.length) {
+            window.requestAnimationFrame(gameLoop);
+        }
     }
-}
-
-firewallImage.onload = () => {
-    loadedTextures++;
-    if(loadedTextures == wallTextures.length) {
-        window.requestAnimationFrame(gameLoop);
-    }
-}
+    return img;
+})

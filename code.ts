@@ -423,7 +423,7 @@ const wallTextures: Array<HTMLImageElement | null> = [
 ].map(fileName => {
     const img = new Image();
     if(fileName) {
-        img.src = fileName;
+        img.src = `textures/${fileName}`;
     }
     img.onload = () => {
         loadedTextures++;

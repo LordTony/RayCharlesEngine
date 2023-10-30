@@ -6,7 +6,7 @@ export interface IRaycastObject {
     stepEndPoint: Point;
     planarDistance: number; 
     tile: string;
-    wallFace: 0 | 1 | 2 | 3
+    wallFace: 'n' | 's' | 'e' | 'w'
     sideDist: number
     hitPoint: Point;
 }

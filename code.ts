@@ -11,10 +11,9 @@ let show2DOverlay = false;
 let wallTextureIndex = 1;
 let printDebugInfoThisFrame = false;
 
-const noShadowDist = 2;
-const fullShadowDist = 10;
+let lightRadius = 8;
 const aspectRatio = 16 / 9;
-const horizontalResolution = 640;
+const horizontalResolution = 1080;
 const verticalResolution = Math.round(horizontalResolution / aspectRatio);
 
 const body = document.getElementsByTagName("body")[0] as HTMLElement;
@@ -51,7 +50,8 @@ bufferCtx.imageSmoothingEnabled = false;
 bufferCtx.translate(.5, .5);
 
 const bufferData = bufferCtx.getImageData(0, 0, canvas.width, canvas.height);
-const bufferArray = new Uint32Array(bufferData.data.buffer);
+const bufferArray8 = bufferData.data;
+const bufferArray32 = new Uint32Array(bufferData.data.buffer);
 
 const room = `
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -82,7 +82,7 @@ const roomWidth = room[0].length;
 const TwoPi = 2 * Math.PI;
 const camera = {
     pos: new Point(1.5, 1.5),
-    radialAngle: Math.PI / 4,
+    radialAngle: Math.PI / 2,
     personalSpace: .25,
     fieldOfView: Math.PI / 3
 }
@@ -92,7 +92,7 @@ const cellWidth = canvas.width / roomWidth;
 
 var keys = {};
 window.onkeyup = (e: KeyboardEvent) => { keys[e.key] = false; }
-window.onkeydown = (e: KeyboardEvent) => { keys[e.key] = true; }
+window.onkeydown = (e: KeyboardEvent) => { keys[e.key] = true; /*console.log(e.key);*/ }
 
 const drawCircle = (point: Point, radius: number): void => {
     bufferCtx.beginPath();
@@ -179,9 +179,20 @@ const handleInput = (elapsed: number) => {
 
     // Uncomment to make the room breathe
     //camera.fieldOfView = Math.PI / 3 + (Math.cos(Date.now()/2000) / 20)
+
     if(keys["a"] || keys["d"]) {
         const direction = keys["a"] ? -1 : 1;
         camera.radialAngle = (camera.radialAngle  + 0.075 * direction) % TwoPi;
+    }
+
+    if(keys["ArrowDown"]) {
+        keys["ArrowDown"] = false;
+        lightRadius = Math.max(lightRadius - .1, 0);
+    }
+
+    if(keys["ArrowUp"]) {
+        keys["ArrowUp"] = false;
+        lightRadius += .1;
     }
 
     if(keys["w"] || keys["s"]) {
@@ -218,8 +229,8 @@ const handleInput = (elapsed: number) => {
 const draw = () => {
 
     // erase ceiling
-    for(let row = 0; row < bufferArray.length / 2; row++) {
-        bufferArray[row] = skyColorAsInt;
+    for(let row = 0; row < bufferArray32.length; row++) {
+        bufferArray32[row] = skyColorAsInt;
     }
     // ground distance shadow
     //const shadowBandHeight = canvas.height / (2 * noShadowDist);
@@ -299,10 +310,15 @@ const draw = () => {
         const wallBottomY = wallTopY + lineHeight;
         const loopEnd = Math.min(verticalResolution, wallBottomY);
         const pixelsAboveWall = wallTopY - loopStart
+        const horizontalResolutionX4 = horizontalResolution * 4;
+        const rayIndexX4 = ray.index * 4;
+
+        const wallShadowFactor = (1/Math.max(ray.planarDistance/lightRadius, 1));
 
         if(wallTextureIndex % wallTextures.length === 0) {
+            var wallColor = (0xff << 24 | 40 * wallShadowFactor << 16 | 200 * wallShadowFactor << 8 | 25 * wallShadowFactor)
             for(let row = 0; row < loopEnd - loopStart; row++) {
-                bufferArray[horizontalResolution * (row + loopStart) + ray.index] = 0xff << 24 | 0 << 16 | 200 << 8 | 255;
+                bufferArray32[horizontalResolution * (row + loopStart) + ray.index] = wallColor;
             }
         } else {
 
@@ -314,29 +330,45 @@ const draw = () => {
                 ? ray.stepEndPoint.x % 1
                 : 1 - (ray.stepEndPoint.y % 1)
 
-            const textureXOffset = Math.round((texWidth * startTextureOffset));
+            const textureXOffsetX4 = Math.round((texWidth * startTextureOffset)) * 4;
+            const textureWidhtX4 = texWidth * 4;
             for(let row = 0; row < loopEnd - loopStart; row++) {
-                const sampleCoord = texWidth * Math.floor(texHeight * (row - pixelsAboveWall)/(wallBottomY - wallTopY)) + textureXOffset
-                bufferArray[horizontalResolution * (row + loopStart) + ray.index] = texture.imageData[sampleCoord];
+                const sampleCoord = textureWidhtX4 * Math.floor(texHeight * (row - pixelsAboveWall)/(wallBottomY - wallTopY)) + textureXOffsetX4
+                const r = texture.imageData8[sampleCoord] * wallShadowFactor;
+                const g = texture.imageData8[sampleCoord + 1] * wallShadowFactor;
+                const b = texture.imageData8[sampleCoord + 2] * wallShadowFactor;
+
+                const finalPixel = horizontalResolutionX4 * (row + loopStart) + rayIndexX4;
+                bufferArray8[finalPixel] =  r;
+                bufferArray8[finalPixel + 1] =  g;
+                bufferArray8[finalPixel + 2] =  b;
             }
         }
 
         // draw floor
+        const texture = wallTextures[4] as TextureInfo;
+        const raFix = Math.cos(camera.radialAngle - ray.rayAngle);
+        const rayAngleCos = Math.cos(ray.rayAngle);
+        const rayAngleSin = Math.sin(ray.rayAngle);
+        const canvasWidthX4 = 4 * texture.canvas.width;
+        const magicNumberPos = camera.pos.scale(450); // 420 is some magic number that makes the floor stop moving
+        const precalculatedXThing = rayAngleCos * texture.canvas.width;
+        const precalculatedYThing = rayAngleSin * texture.canvas.height;
         for (let y = wallTopY + lineHeight; y < verticalResolution; y++) {
-            const pixelIndex = y * horizontalResolution + (ray.index);
-            const rgbaValue = 0xff << 24 | 0 << 16 | 75 << 8 | 150;
-            bufferArray[pixelIndex] = rgbaValue; // Right shift by 2 to convert to 32-bit index
-        }
 
-        if(ray.planarDistance > noShadowDist) {
-            const shadowWeight = (ray.planarDistance - noShadowDist)/(fullShadowDist - noShadowDist)
-            bufferCtx.fillStyle = getShadowColor(shadowWeight)
-            bufferCtx.fillRect(
-                ray.index, 
-                wallTopY, 
-                1, 
-                lineHeight
-            )
+            const dy = y - (verticalResolution/2);
+            const crapIDontUnderstand = 255 / dy / raFix;
+            const tx = Math.round(magicNumberPos.x + precalculatedXThing * crapIDontUnderstand);
+            const ty = Math.round(magicNumberPos.y + precalculatedYThing * crapIDontUnderstand);
+            const texturePos = Math.abs((ty * canvasWidthX4 + tx * 4) % texture.imageData8.length);
+            
+            const r = texture.imageData8[texturePos];
+            const g = texture.imageData8[texturePos + 1];
+            const b = texture.imageData8[texturePos + 2];
+            const pixelIndex = y * horizontalResolutionX4 + rayIndexX4;
+            bufferArray8[pixelIndex] = r;
+            bufferArray8[pixelIndex + 1] = g;
+            bufferArray8[pixelIndex + 2] = b;
         }
     }
 
@@ -379,6 +411,10 @@ const draw = () => {
     // transfer the buffer over to the visible context in one fell swoop
 
     ctx.putImageData(bufferData,0,0);
+
+    // Can do non-intense stuff after
+    ctx.strokeStyle = "white"
+    ctx.strokeText(`${verticalResolution}`,10,10)
 }
 
 let prev = 0;
@@ -411,7 +447,8 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 
 interface TextureInfo {
     canvas: HTMLCanvasElement;
-    imageData: Uint32Array;
+    imageData8: Uint8ClampedArray;
+    imageData32: Uint32Array;
 }
 
 let wallTextures: Array<null | TextureInfo> = []
@@ -422,7 +459,8 @@ const main = async () => {
         null,
         "brick.jpg",
         "firewall.png",
-        "fleshwall.jpg"
+        "fleshwall.jpg",
+        "stoneFloor.png"
     ].map(fileName => {
         if(!fileName) {
             return Promise.resolve(null) as Promise<null>;
@@ -440,8 +478,9 @@ const main = async () => {
             canvas.height = image.height;
             const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
             ctx.drawImage(image, 0,0);
-            const imageData = new Uint32Array(ctx.getImageData(0,0,canvas.width, canvas.height).data.buffer);
-            return { canvas, imageData };
+            const imageData8 = ctx.getImageData(0,0,canvas.width, canvas.height).data;
+            const imageData32 = new Uint32Array(imageData8.buffer);
+            return { canvas, imageData8, imageData32 };
         }
     });
 
